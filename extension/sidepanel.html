@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="et">
+  <head>
+    <meta charset="utf-8" />
+    <title>Veebiabiline</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Veebiabiline</h1>
+      <button id="start-over" type="button" class="secondary">Alusta uuesti</button>
+    </header>
+
+    <p id="page-info"></p>
+
+    <main>
+      <section id="setup" hidden>
+        <h2>Abiline pole veel seadistatud</h2>
+        <p>Pereliige peab avama seaded ja lisama võtme.</p>
+        <button id="open-settings" type="button">Ava seaded</button>
+      </section>
+
+      <div id="chat" role="log" aria-live="off" aria-label="Vestlus"></div>
+    </main>
+
+    <form id="ask-form">
+      <label for="question">Sinu küsimus</label>
+      <textarea id="question" rows="2" aria-describedby="question-hint"></textarea>
+      <p id="question-hint">Saatmiseks vajuta Enter või nuppu „Küsi“.</p>
+      <div class="actions">
+        <button id="mic" type="button" class="secondary" hidden>Räägi</button>
+        <button id="ask" type="submit">Küsi</button>
+      </div>
+    </form>
+
+    <div id="announcer" class="visually-hidden" aria-live="polite"></div>
+
+    <script type="module" src="dist/sidepanel.js"></script>
+  </body>
+</html>

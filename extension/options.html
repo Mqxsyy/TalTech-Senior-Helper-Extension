@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="et">
+  <head>
+    <meta charset="utf-8" />
+    <title>Veebiabilise seaded</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Veebiabilise seaded</h1>
+      <p>See leht on pereliikmele, kes abilise seadistab.</p>
+
+      <form id="settings">
+        <fieldset>
+          <legend>Claude API võti</legend>
+          <p id="key-help">
+            Loo võti aadressil
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+            Võti salvestatakse ainult selle arvuti Chrome'i.
+          </p>
+          <label for="apiKey">Võti</label>
+          <div class="row">
+            <input id="apiKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help" />
+            <button id="toggle-key" type="button" class="secondary" aria-pressed="false">Näita võtit</button>
+          </div>
+          <div class="row">
+            <button id="test-key" type="button" class="secondary">Kontrolli võtit</button>
+            <p id="test-result" class="status" role="status"></p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Teksti suurus abilises</legend>
+          <label><input type="radio" name="textSize" value="normal" /> Tavaline</label>
+          <label><input type="radio" name="textSize" value="large" /> Suur</label>
+          <label><input type="radio" name="textSize" value="huge" /> Väga suur</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Hääl</legend>
+          <p id="voice-missing" class="status bad" hidden>
+            Sellel arvutil pole eestikeelset ettelugemise häält, seega vastuseid ette lugeda ei saa.
+          </p>
+          <label><input id="readAloud" type="checkbox" /> Loe iga vastus automaatselt ette</label>
+          <label><input id="voiceInput" type="checkbox" aria-describedby="mic-help" /> Näita nuppu „Räägi“, et küsida häälega</label>
+          <p id="mic-help" class="hint">
+            Häälega küsimiseks on vaja üks kord mikrofoni luba. Vajuta „Luba mikrofon“ ja nõustu Chrome'i küsimusega.
+          </p>
+          <div class="row">
+            <button id="allow-mic" type="button" class="secondary">Luba mikrofon</button>
+            <p id="mic-result" class="status" role="status"></p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Veebilehed, kus abiline on välja lülitatud</legend>
+          <p id="blocked-help">
+            Üks veebileht rea kohta, näiteks <code>swedbank.ee</code>. Abiline ei loe neid lehti ega saada neid kuhugi.
+          </p>
+          <label for="blockedSites">Veebilehed</label>
+          <textarea id="blockedSites" rows="5" spellcheck="false" aria-describedby="blocked-help"></textarea>
+        </fieldset>
+
+        <div class="row">
+          <button type="submit">Salvesta</button>
+          <p id="save-result" class="status" role="status"></p>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="dist/options.js"></script>
+  </body>
+</html>

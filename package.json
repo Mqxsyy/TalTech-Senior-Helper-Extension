@@ -1,0 +1,17 @@
+{
+  "name": "senior-helper",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome extension: a friendly chat helper that explains web pages and highlights where to click.",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
