@@ -10,7 +10,9 @@ This guide is for the family member setting it up. It takes about 15 minutes.
 
 - **Google Chrome** version 116 or newer, on Windows, Mac, or Linux.
 - **Node.js** 18 or newer, from <https://nodejs.org>. You need it once, to build the extension. Grandma's computer does not need it.
-- **A Claude API account** at <https://console.anthropic.com>, with credit on it. The helper pays per question (see [Cost](#8-cost)).
+- **An AI key**, one of:
+  - **Claude** (recommended, most accurate): an account at <https://console.anthropic.com> with credit. The helper pays per question, a few euros a month (see [Cost](#8-cost)).
+  - **Gemini** (free): a Google account. Free up to a daily limit; see step 2b.
 
 ## 2. Get a Claude API key
 
@@ -21,6 +23,14 @@ This guide is for the family member setting it up. It takes about 15 minutes.
 5. Copy the key. It starts with `sk-ant-`. You will paste it into the helper's settings in step 5.
 
 Treat the key like a password. Anyone who has it can spend your credit. If it leaks, delete it in the Console and create a new one.
+
+## 2b. Or: get a free Gemini API key
+
+1. Sign in at <https://aistudio.google.com/apikey> with a Google account.
+2. Click **Create API key** and copy it. It starts with `AIza`.
+3. The free daily limit is shown in AI Studio. If grandma hits it, the helper says it is busy until the next day.
+
+In the EU, Google treats free-tier data like paid data (not used for training). Treat the key like a password.
 
 ## 3. Build the extension
 
@@ -47,13 +57,14 @@ This creates `extension/dist/`, which holds the chat code. The `extension/` fold
 
 The settings page opens by itself after installing. To open it later, right-click the helper's icon and choose **Options**.
 
-1. **Claude API võti:** paste the key and click **Kontrolli võtit** (check key). You should see "Võti töötab." This checks the key only, not whether the account has credit.
+1. **Tehisaru teenus:** pick Claude or Gemini. Then paste that key and click **Kontrolli võtit** (check key). You should see "Võti töötab." This checks the key only, not credit or free quota. For Gemini, **Mudel** picks Flash-Lite (more free questions) or Flash (more accurate).
 2. **Teksti suurus abilises:** text size in the helper panel. "Suur" (large) is the default.
 3. **Hääl** (voice, optional):
    - **Loe iga vastus automaatselt ette** reads each answer aloud. This needs an Estonian text-to-speech voice on the computer. If there isn't one, the page says so in red and the option is turned off, because an English voice reading Estonian is unintelligible. On Windows you can add one under Settings → Time & language → Speech → Add voices → Eesti.
    - **Näita nuppu „Räägi“** shows a Speak button so she can ask by voice. Then click **Luba mikrofon** and accept Chrome's prompt. Chrome only shows that prompt in a normal tab, which is why it lives on the settings page.
 4. **Veebilehed, kus abiline on välja lülitatud:** sites where the helper stays off, such as her bank or health portal. Put one site per line, for example `swedbank.ee`.
-5. Click **Salvesta** (save).
+5. **Abilise parandamine** (optional, for improving the helper): **Jäta vestlused meelde** keeps every answer with its page picture on this computer, so you can later see where the helper went wrong. Nothing is sent anywhere. Typed text is covered in the pictures, but everything else on the page is visible, so turn it off when you are done. **Laadi vestlused alla** downloads them as a file; **Kustuta vestlused** deletes them. See [Improving the helper](#13-improving-the-helper).
+6. Click **Salvesta** (save).
 
 ## 6. Pin the icon and test it
 
@@ -68,9 +79,11 @@ The settings page opens by itself after installing. To open it later, right-clic
 - **Open the helper:** click the blue speech-bubble icon at the top right of Chrome. It stays open while she browses.
 - **Ask:** type in the box labelled **Sinu küsimus** and press Enter or click **Küsi**. Or click **Räägi**, talk, and stop talking. The question sends itself.
 - **Follow the box:** the orange box shows where to click. It goes away when she clicks the highlighted thing or presses Escape.
-- **Step by step, by itself:** the helper gives one step at a time. When she clicks the thing in the orange box (or types into the highlighted box and moves on), the helper notices and shows the next step automatically. The chat then shows "Tehtud." for her. She does not need to ask "what next?".
+- **Step by step, by itself:** the helper gives one step at a time. When she clicks the thing in the orange box, fills in the highlighted boxes (pressing Enter, moving on, or just pausing after typing), or the page changes, the helper shows the next step automatically, until the whole task is done. The chat shows a small "Tehtud." line. She does not need to ask "what next?".
+- **Ma ei leia seda** ("I can't find it"): under the newest answer while an orange box is shown. The helper looks again more carefully (with a stronger, pricier model for that one answer) and explains differently.
+- **Peata** (stop): shown while the helper is thinking. Stops the answer. Asking a new question also stops the old answer.
 - **Alusta uuesti:** this button clears the conversation and shows the example questions again.
-- **Loe ette:** each answer has this button to hear it spoken, if the computer has an Estonian voice.
+- **Loe ette:** the newest answer has this button to hear it spoken, if the computer has an Estonian voice.
 
 Things the helper never does:
 
@@ -80,11 +93,13 @@ Things the helper never does:
 
 ## 8. Cost
 
-The helper uses Claude Haiku 5.5, the cheapest Claude model. Each question or automatic next step costs roughly 0.1 to 0.5 US cents, including a screenshot, so $5 of credit lasts for a few thousand questions. This is an estimate. Long conversations and screenshots cost more. The helper starts a fresh conversation every 12 questions to keep requests small. Actual usage is listed in the Console under **Usage**. The spend limit from step 2 is the safety net.
+The helper uses Claude Haiku 5.5, the cheapest Claude model. Each question or automatic next step costs roughly 0.1 to 0.5 US cents, including a screenshot, so $5 of credit lasts for a few thousand questions. This is an estimate. Long conversations and screenshots cost more. The helper starts a fresh conversation every 12 questions, or sooner when a conversation gets long, to keep requests small.
+
+Gemini costs nothing up to Google's free daily limit; after that it stops until the next day. Actual usage is listed in the Console under **Usage**. The spend limit from step 2 is the safety net.
 
 ## 9. Privacy
 
-What is sent to Anthropic for each question:
+What is sent to Anthropic (or Google, with Gemini) for each question:
 
 - the question
 - a screenshot of what is on screen, with fields she typed into painted over in grey
@@ -116,7 +131,7 @@ What the helper says, and what it means:
 - **"Abilise võti ei tööta"** (key not working): the key was deleted or mistyped. Click Kontrolli võtit in the settings.
 - **"Midagi läks valesti"** (something went wrong): most often the account has no credit. Check Plans & Billing in the Console. For the exact reason, see "Seeing what went wrong" below.
 - **"Ma ei saa internetiga ühendust"** (no internet): check the computer's connection.
-- **"Teenus on praegu ülekoormatud"** (service overloaded): you hit a rate limit or the service is busy. Wait a minute and try again.
+- **"Abiline on praegu hõivatud"** (helper busy): you hit a rate limit, the Gemini free daily limit, or the service is busy. Wait a minute and try again; with Gemini, it may only work again tomorrow.
 - **"Mikrofon pole veel lubatud"** (microphone not allowed): in the settings, click Luba mikrofon. If Chrome blocked it before, click the icon on the left of the address bar on the settings page and allow the microphone.
 
 Other problems:
@@ -137,3 +152,18 @@ Other problems:
 - Settings page messages: `src/options.js`.
 
 Run `npm run build` and reload the extension after editing.
+
+## 13. Improving the helper
+
+1. Turn on **Jäta vestlused meelde**, let grandma use the helper for a while, then click **Laadi vestlused alla**.
+2. Open the file. Each answer has the question or event, the page list, the highlighted ids, and timings. Answers she followed with „Ma ei leia seda“ have `"notFound": true`.
+3. For answers you want to test, add `"expected"`: the right ids from the page list, e.g. `"expected": ["e14"]`, or `"expected": []` if nothing should be highlighted.
+4. Run (this makes real, paid requests):
+
+   ```bash
+   ANTHROPIC_API_KEY=sk-ant-... npm run eval -- veebiabiline-vestlused-2026-10-14.json
+   GEMINI_API_KEY=AIza... npm run eval -- file.json --provider gemini
+   ```
+
+   Options: `--model`, `--effort low|medium|high`. It prints which answers highlighted the right thing and the share that were right. Re-run after changing the prompt or model to see if it got better.
+

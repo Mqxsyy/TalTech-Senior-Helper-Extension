@@ -4,8 +4,8 @@
   --muted: #3c3c3c;
   --bg: #ffffff;
   --accent: #0b4fc4;
-  --her: #0b4fc4;
-  --helper: #8a4b00;
+  --her-bg: #e3ecfb;
+  --helper-bg: #f2f2f2;
   --error: #b00020;
   --focus: #ffbf00;
 }
@@ -18,7 +18,7 @@ body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   font: var(--size) / 1.5 system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg);
@@ -48,17 +48,6 @@ h2 {
   font-size: 1em;
 }
 
-#page-info {
-  margin: 0;
-  padding: 6px 12px;
-  font-size: 0.75em;
-  color: var(--muted);
-  border-bottom: 1px solid var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 main {
   overflow-y: auto;
   padding: 12px;
@@ -75,25 +64,31 @@ main {
 }
 
 .message {
-  margin: 0 0 16px;
-  padding: 8px 12px;
-  border-left: 6px solid var(--helper);
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--helper-bg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .message.her {
-  border-left-color: var(--her);
+  margin-left: 15%;
+  background: var(--her-bg);
 }
 
 .message.error {
-  border-left-color: var(--error);
+  background: #ffffff;
+  border: 3px solid var(--error);
 }
 
-.message .who {
-  display: block;
-  font-size: 0.75em;
-  font-weight: 700;
+/* "Tehtud." after she did a step: a quiet line, not a bubble. */
+.message.step {
+  margin: -4px 0 10px auto;
+  padding: 0 4px;
+  width: fit-content;
+  background: none;
+  font-size: 0.8em;
   color: var(--muted);
 }
 
@@ -101,8 +96,15 @@ main {
   color: var(--muted);
 }
 
-.message .read-aloud {
-  margin-top: 8px;
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  white-space: normal;
+}
+
+.message-actions button {
   font-size: 0.8em;
 }
 
@@ -150,14 +152,9 @@ textarea {
   resize: vertical;
 }
 
-#question-hint {
-  margin: 4px 0 8px;
-  font-size: 0.7em;
-  color: var(--muted);
-}
-
 .actions {
   display: flex;
+  margin-top: 8px;
   gap: 8px;
 }
 

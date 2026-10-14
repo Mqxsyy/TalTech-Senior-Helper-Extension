@@ -7,11 +7,18 @@ export const LANGUAGE_CODE = "et-EE";
 export const TEXT_SIZES = { normal: "18px", large: "22px", huge: "26px" };
 
 export const DEFAULTS = {
+  // "claude" (paid, most accurate) or "gemini" (Google, free up to a daily limit).
+  provider: "claude",
   apiKey: "",
+  geminiKey: "",
+  geminiModel: "gemini-3.5-flash-lite",
   textSize: "large",
-  readAloud: false,
+  // Only takes effect when the computer has an Estonian voice.
+  readAloud: true,
   voiceInput: false,
   blockedSites: "",
+  // Keep a log of every turn on this computer, for improving the helper.
+  recordSessions: false,
 };
 
 export function loadSettings() {

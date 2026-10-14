@@ -6,10 +6,12 @@
   "description": "Chrome extension: a friendly chat helper that explains web pages and highlights where to click.",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "eval": "node scripts/eval.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0"
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@google/genai": "^2.29.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

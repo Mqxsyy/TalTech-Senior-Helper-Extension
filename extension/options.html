@@ -12,6 +12,18 @@
 
       <form id="settings">
         <fieldset>
+          <legend>Tehisaru teenus</legend>
+          <label>
+            <input type="radio" name="provider" value="claude" />
+            Claude (Anthropic): kõige täpsem, maksab umbes mõni euro kuus
+          </label>
+          <label>
+            <input type="radio" name="provider" value="gemini" />
+            Gemini (Google): tasuta kuni päevase piirini
+          </label>
+        </fieldset>
+
+        <fieldset id="claude-settings">
           <legend>Claude API võti</legend>
           <p id="key-help">
             Loo võti aadressil
@@ -20,12 +32,35 @@
           </p>
           <label for="apiKey">Võti</label>
           <div class="row">
-            <input id="apiKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help" />
-            <button id="toggle-key" type="button" class="secondary" aria-pressed="false">Näita võtit</button>
+            <input id="apiKey" class="key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help" />
+            <button type="button" class="secondary toggle-key" data-for="apiKey" aria-pressed="false">Näita võtit</button>
           </div>
           <div class="row">
             <button id="test-key" type="button" class="secondary">Kontrolli võtit</button>
             <p id="test-result" class="status" role="status"></p>
+          </div>
+        </fieldset>
+
+        <fieldset id="gemini-settings">
+          <legend>Gemini API võti</legend>
+          <p id="gemini-key-help">
+            Loo tasuta võti aadressil
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.
+            Võti salvestatakse ainult selle arvuti Chrome'i. Tasuta küsimuste arvu näed samal lehel.
+          </p>
+          <label for="geminiKey">Võti</label>
+          <div class="row">
+            <input id="geminiKey" class="key" type="password" autocomplete="off" spellcheck="false" aria-describedby="gemini-key-help" />
+            <button type="button" class="secondary toggle-key" data-for="geminiKey" aria-pressed="false">Näita võtit</button>
+          </div>
+          <label for="geminiModel">Mudel</label>
+          <select id="geminiModel">
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite: rohkem tasuta küsimusi päevas</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash: täpsem, vähem tasuta küsimusi</option>
+          </select>
+          <div class="row">
+            <button id="test-gemini-key" type="button" class="secondary">Kontrolli võtit</button>
+            <p id="gemini-test-result" class="status" role="status"></p>
           </div>
         </fieldset>
 
@@ -59,6 +94,21 @@
           </p>
           <label for="blockedSites">Veebilehed</label>
           <textarea id="blockedSites" rows="5" spellcheck="false" aria-describedby="blocked-help"></textarea>
+        </fieldset>
+
+        <fieldset>
+          <legend>Abilise parandamine</legend>
+          <p id="record-help">
+            Kui see on sees, jätab abiline iga vastuse koos lehe pildiga selle arvuti meelde. Nii saab hiljem vaadata,
+            kus abiline eksis. Midagi ei saadeta kuhugi. Kastidesse kirjutatud tekst on pildil kinni kaetud, aga muu lehel
+            olev on näha.
+          </p>
+          <label><input id="recordSessions" type="checkbox" aria-describedby="record-help" /> Jäta vestlused meelde</label>
+          <div class="row">
+            <button id="export-log" type="button" class="secondary">Laadi vestlused alla</button>
+            <button id="clear-log" type="button" class="secondary">Kustuta vestlused</button>
+            <p id="log-result" class="status" role="status"></p>
+          </div>
         </fieldset>
 
         <div class="row">

@@ -11,8 +11,6 @@
       <button id="start-over" type="button" class="secondary">Alusta uuesti</button>
     </header>
 
-    <p id="page-info"></p>
-
     <main>
       <section id="setup" hidden>
         <h2>Abiline pole veel seadistatud</h2>
@@ -25,10 +23,10 @@
 
     <form id="ask-form">
       <label for="question">Sinu küsimus</label>
-      <textarea id="question" rows="2" aria-describedby="question-hint"></textarea>
-      <p id="question-hint">Saatmiseks vajuta Enter või nuppu „Küsi“.</p>
+      <textarea id="question" rows="2"></textarea>
       <div class="actions">
         <button id="mic" type="button" class="secondary" hidden>Räägi</button>
+        <button id="stop" type="button" class="secondary" hidden>Peata</button>
         <button id="ask" type="submit">Küsi</button>
       </div>
     </form>
