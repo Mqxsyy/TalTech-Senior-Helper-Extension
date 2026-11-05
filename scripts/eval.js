@@ -5,6 +5,9 @@
 // 2. In the downloaded file, add "expected" to the turns you want to test:
 //    the ids that are right for that turn, e.g. "expected": ["e14", "e15"],
 //    or "expected": [] when nothing should be highlighted (scam page, task done).
+//    Add "expectedFollow": true when the answer should keep following her task
+//    (call follow_task), false when it should not (a plain question, a "where
+//    is" question, a finished task). Either label alone is enough.
 //    Turns marked "notFound": true (she pressed „Ma ei leia seda“ after them)
 //    are good ones to label.
 // 3. Run, with the key in the environment (this makes real, paid requests):
@@ -34,10 +37,12 @@ if (!positionals[0]) {
 }
 
 const turns = JSON.parse(readFileSync(positionals[0], "utf8"));
-const cases = turns.filter((turn) => Array.isArray(turn.expected));
+const cases = turns.filter((turn) => Array.isArray(turn.expected) || typeof turn.expectedFollow === "boolean");
 if (!cases.length) {
   const flagged = turns.filter((turn) => turn.notFound || turn.highlights?.some((h) => !h.ok || h.coveredBy)).length;
-  console.log(`${turns.length} turns, ${flagged} with "Ma ei leia seda" or a failed highlight. None has "expected" yet: see the top of this file.`);
+  console.log(
+    `${turns.length} turns, ${flagged} with "Ma ei leia seda" or a failed highlight. None has "expected" or "expectedFollow" yet: see the top of this file.`
+  );
   process.exit(0);
 }
 
@@ -52,6 +57,7 @@ let passed = 0;
 let totalMs = 0;
 for (const turn of cases) {
   const highlighted = [];
+  let followed = false;
   let answer = "";
   const start = performance.now();
   let outcome;
@@ -62,6 +68,7 @@ for (const turn of cases) {
       onText: (delta) => (answer += delta),
       runTool: async (name, input) => {
         if (name === "highlight_element") highlighted.push(input.element_id);
+        if (name === "follow_task") followed = true;
         return { text: name === "request_screenshot" ? "No new screenshot in this test." : "Done." };
       },
     });
@@ -70,10 +77,15 @@ for (const turn of cases) {
   }
   const ms = Math.round(performance.now() - start);
   totalMs += ms;
-  const ok = turn.expected.length === 0 ? highlighted.length === 0 : highlighted.some((id) => turn.expected.includes(id));
+  const highlightOk = !Array.isArray(turn.expected) || (turn.expected.length === 0 ? highlighted.length === 0 : highlighted.some((id) => turn.expected.includes(id)));
+  const followOk = typeof turn.expectedFollow !== "boolean" || turn.expectedFollow === followed;
+  const ok = highlightOk && followOk;
   if (ok) passed++;
+  const expectedText = [Array.isArray(turn.expected) && `[${turn.expected}]`, typeof turn.expectedFollow === "boolean" && `follow ${turn.expectedFollow}`]
+    .filter(Boolean)
+    .join(" ");
   console.log(
-    `${ok ? "PASS" : "FAIL"}  #${turn.id}  ${turn.address}  expected [${turn.expected}] got [${highlighted}]  ${ms} ms  ${outcome}`
+    `${ok ? "PASS" : "FAIL"}  #${turn.id}  ${turn.address}  expected ${expectedText} got [${highlighted}] follow ${followed}  ${ms} ms  ${outcome}`
   );
   if (!ok) console.log(`      ${turn.task} -> ${answer.trim().replace(/\s+/g, " ")}`);
 }

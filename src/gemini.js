@@ -74,6 +74,8 @@ export function createGeminiChat(apiKey, system, model = DEFAULT_GEMINI_MODEL) {
       if (isGeminiAuthError(error)) return "auth";
       if (error instanceof ApiError) return error.status === 429 || error.status >= 500 ? "busy" : "other";
       if (error instanceof TypeError) return "offline";
+      // The server cut the answer stream off midway; asking again works.
+      if (/Incomplete JSON segment/i.test(error?.message)) return "busy";
       return "other";
     },
 

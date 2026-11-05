@@ -22,17 +22,17 @@
 //   waitForQuiet                -> { ok } once the page has stopped changing (or after a few seconds)
 // Messages to the side panel:
 //   highlightDone { description, pageId }   she clicked a highlighted element,
-//                                   filled in the highlighted boxes (left the box,
-//                                   pressed Enter, or stopped typing for a moment),
-//                                   sent their form, or a popup or menu opened
-//                                   while boxes were shown
+//                                   filled in or changed the highlighted boxes (left
+//                                   the box, pressed Enter, stopped typing for a while,
+//                                   or picked in a calendar or list), or sent their form. Nothing else she does is
+//                                   watched.
 //
 // Rectangles in page maps and marks are in screen coordinates of the top
 // frame, so the side panel can draw them on one screenshot.
 //
-// Privacy: never reads what is typed into fields. Only labels, and whether a
-// field is filled in or empty. Marks tell the side panel which rectangles to
-// cover in screenshots. URLs are sent without query string or hash.
+// Privacy: never reads what is typed or chosen in fields. Only labels, and
+// whether a field is filled in or empty. Marks tell the side panel which
+// rectangles to cover in screenshots. URLs are sent without query string or hash.
 
 (() => {
   // If an older copy of this script is still around (extension was reloaded),
@@ -46,7 +46,8 @@
   const MAX_NAME_CHARS = 80;
   const MAX_POINTER_SCAN = 5000;
   // She has stopped typing in the last highlighted box this long: step done.
-  const TYPING_PAUSE_MS = 2500;
+  // Long enough for a slow typist looking for the next key.
+  const TYPING_PAUSE_MS = 6000;
   // Lets the side panel tell a freshly loaded page from the old one.
   const PAGE_ID = Math.random().toString(36).slice(2);
   // When this page started navigating away. Cleared after a while in case the
@@ -342,9 +343,7 @@
     if (el.required || el.getAttribute("aria-required") === "true") states.push("required");
     if (el.getAttribute("aria-invalid") === "true") states.push("has an error");
     if (isTextField(el)) states.push(isFilled(el) ? "filled in" : "empty");
-    if (el.tagName === "SELECT" && el.selectedIndex >= 0) {
-      states.push(`showing "${clean(el.options[el.selectedIndex].text, 40)}"`);
-    }
+    if (el.tagName === "SELECT") states.push(el.value !== "" ? "something chosen" : "nothing chosen");
     return states.join(", ");
   }
 
@@ -506,7 +505,7 @@
         y: top,
         width: right - left,
         height: bottom - top,
-        cover: isTextField(el) && (isFilled(el) || el.type === "password"),
+        cover: (isTextField(el) && (isFilled(el) || el.type === "password")) || (el.tagName === "SELECT" && el.value !== ""),
       });
     }
     return { ok: true, marks: result, viewport: topView() };
@@ -601,12 +600,14 @@
   }
 
   // Pages built with JavaScript often swap an element for a fresh copy. Find
-  // the copy by its kind and text so the box stays on it.
+  // the copy by its kind and text so the box stays on it. Looks in the part
+  // of the page it was in, or the whole page if that part was replaced too.
   function findReplacement(highlight) {
     const now = performance.now();
     if (now - highlight.lastSearch < 500) return null;
     highlight.lastSearch = now;
-    for (const candidate of document.getElementsByTagName(highlight.el.tagName)) {
+    const scope = highlight.scope?.isConnected ? highlight.scope : document;
+    for (const candidate of scope.getElementsByTagName(highlight.el.tagName)) {
       if (kindOf(candidate) === highlight.kind && nameOf(candidate) === highlight.name && isVisible(candidate)) {
         return candidate;
       }
@@ -614,11 +615,27 @@
     return null;
   }
 
+  // Boxes give way to the page: a box hides once she is using its field
+  // (a calendar or list it opens must stay readable), and while something
+  // the page opened covers its element. Checked a few times a second.
+  const CHECK_MS = 250;
+  let lastCheck = 0;
+
   function placeHighlights() {
+    const now = performance.now();
+    const check = now - lastCheck >= CHECK_MS;
+    if (check) lastCheck = now;
+    let picked = null;
     for (const highlight of highlights) {
       const { box, label } = highlight;
       if (!highlight.el.isConnected) highlight.el = findReplacement(highlight) ?? highlight.el;
-      const visible = highlight.el.isConnected;
+      if (check && highlight.el.isConnected) {
+        highlight.covered = coveringThing(highlight.el) !== null;
+        // Chosen in a calendar or list the page opened: the value changed
+        // without her typing.
+        if (!picked && isChangeField(highlight.el) && !highlight.typed && changed(highlight)) picked = highlight.el;
+      }
+      const visible = highlight.el.isConnected && !highlight.engaged && !highlight.covered;
       box.hidden = label.hidden = !visible;
       if (!visible) continue;
       const rect = highlight.el.getBoundingClientRect();
@@ -636,13 +653,16 @@
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - label.offsetWidth - 8));
       Object.assign(label.style, { left: `${left}px`, top: `${top}px` });
     }
+    if (picked) {
+      fieldDone(picked);
+      if (!highlights.length) return;
+    }
     frame = requestAnimationFrame(placeHighlights);
   }
 
   function clearHighlights() {
     cancelAnimationFrame(frame);
     clearTimeout(typingTimer);
-    stopWatchingPopups();
     highlights = [];
     host?.remove();
     host = null;
@@ -692,7 +712,21 @@
     label.className = "label";
     label.textContent = labelText;
     layer.append(box, label);
-    highlights.push({ el, box, label, kind: kindOf(el), name: nameOf(el), rect: null, lastSearch: -Infinity });
+    highlights.push({
+      el,
+      box,
+      label,
+      kind: kindOf(el),
+      name: nameOf(el),
+      scope: el.parentElement?.closest(REGIONS) ?? null,
+      // Compared only with the field's own later value, never sent anywhere.
+      startValue: isChangeField(el) ? valueOf(el) : null,
+      typed: false,
+      engaged: false,
+      covered: false,
+      rect: null,
+      lastSearch: -Infinity,
+    });
 
     const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const start = el.getBoundingClientRect();
@@ -700,7 +734,6 @@
     if (!fullyVisible) el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "center", inline: "nearest" });
     cancelAnimationFrame(frame);
     placeHighlights();
-    watchForPopups();
     // Let the scroll finish before checking where it ended up.
     if (!fullyVisible) await scrollFinished(smooth ? 700 : 100);
     const coveredBy = el.isConnected ? coveringThing(el) : null;
@@ -724,66 +757,8 @@
     });
   }
 
-  // ---------- Popups and menus she opened some other way ----------
-
-  // Popup windows only: menus and suggestion lists open all the time while
-  // she types or points, and would end a step too early.
+  // Things that can sit on top of the page and block a highlighted element.
   const POPUPS = "dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]";
-  let popupObserver = null;
-  let popupTimer = 0;
-  let knownPopups = new Set();
-
-  function visiblePopups() {
-    return new Set(deepQueryAll(allRoots(), POPUPS).filter((el) => !isOurs(el) && isVisible(el) && inViewport(el.getBoundingClientRect())));
-  }
-
-  // While boxes are shown, a new popup or menu means the page moved on
-  // without her using the box (she clicked something else, or the site
-  // opened it by itself). Treat it as a step so the helper can react.
-  function watchForPopups() {
-    if (popupObserver) return;
-    knownPopups = visiblePopups();
-    // Throttled, not debounced: animated pages never stop changing.
-    popupObserver = new MutationObserver(() => {
-      popupTimer ||= setTimeout(() => {
-        popupTimer = 0;
-        checkPopups();
-      }, 400);
-    });
-    popupObserver.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["open", "hidden", "aria-hidden", "aria-expanded", "aria-modal", "style", "class"],
-    });
-  }
-
-  function stopWatchingPopups() {
-    popupObserver?.disconnect();
-    popupObserver = null;
-    clearTimeout(popupTimer);
-    popupTimer = 0;
-  }
-
-  // The element with focus, looking inside shadow roots.
-  function focusedElement() {
-    let el = document.activeElement;
-    while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
-    return el;
-  }
-
-  function checkPopups() {
-    if (!highlights.length) return;
-    // She is still busy with a highlighted thing; what opens belongs to it.
-    const focused = focusedElement();
-    if (focused && highlights.some(({ el }) => composedContains(el, focused))) return;
-    const fresh = [...visiblePopups()].find(
-      (popup) => !knownPopups.has(popup) && !highlights.some(({ el }) => composedContains(popup, el))
-    );
-    if (!fresh) return;
-    const name = kindOf(fresh) === "popup window" ? clean(fresh.innerText, 120) : nameOf(fresh);
-    report(`did something else, and a ${kindOf(fresh)} opened: "${name}"`);
-  }
 
   // ---------- She did the step ----------
 
@@ -803,12 +778,23 @@
     return highlights.find(({ rect }) => rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)?.el;
   }
 
-  // Something highlighted that she still has to do: an empty box to fill in,
-  // or a button or link to press.
-  function stillToDo(el) {
-    if (!el.isConnected) return false;
-    if (isChangeField(el)) return !isFilled(el);
-    return kindOf(el) !== "heading";
+  function valueOf(el) {
+    return el.isContentEditable ? el.innerText : el.value;
+  }
+
+  // A highlighted field is done once it holds something new: typed, chosen,
+  // or picked in a calendar. A field that already showed a value („Täna“)
+  // is not done just because she clicked in and out of it.
+  function changed(highlight) {
+    return isFilled(highlight.el) && valueOf(highlight.el) !== highlight.startValue;
+  }
+
+  // Something highlighted that she still has to do: a field to fill in or
+  // change, or a button or link to press.
+  function stillToDo(highlight) {
+    if (!highlight.el.isConnected) return false;
+    if (isChangeField(highlight.el)) return !changed(highlight);
+    return kindOf(highlight.el) !== "heading";
   }
 
   function done(el, verb) {
@@ -838,8 +824,9 @@
   }
 
   function fieldDone(el) {
-    if (!el || !isChangeField(el)) return;
-    if (highlights.some((other) => other.el !== el && stillToDo(other.el))) return;
+    const highlight = highlights.find((h) => h.el === el);
+    if (!highlight || !isChangeField(el) || !changed(highlight)) return;
+    if (highlights.some((other) => other !== highlight && stillToDo(other))) return;
     done(el, el.tagName === "SELECT" ? "made a choice in" : "filled in");
   }
 
@@ -861,10 +848,34 @@
   function onInput(event) {
     const el = highlightedTarget(event);
     if (!el || !isTextField(el)) return;
+    const highlight = highlights.find((h) => h.el === el);
+    if (highlight) highlight.typed = true;
     clearTimeout(typingTimer);
     typingTimer = setTimeout(() => {
       if (isFilled(el) && highlights.some((highlight) => highlight.el === el)) fieldDone(el);
     }, TYPING_PAUSE_MS);
+  }
+
+  // Once she presses anywhere, the dimming has done its job. Pressing into a
+  // highlighted field (or tabbing to it) means she found it: hide its box so
+  // a calendar or list it opens is not covered.
+  function onPointerDown(event) {
+    for (const highlight of highlights) highlight.box.classList.remove("dim");
+    engage(highlightedAt(event));
+  }
+
+  // Only focus she moved with Tab; pages also focus fields by themselves.
+  let lastTabAt = -Infinity;
+
+  function onFocusIn(event) {
+    if (performance.now() - lastTabAt < 500) engage(highlightedTarget(event));
+  }
+
+  function engage(el) {
+    const highlight = el && isChangeField(el) && highlights.find((h) => h.el === el);
+    if (!highlight) return;
+    highlight.engaged = true;
+    highlight.box.classList.remove("dim");
   }
 
   // Pressing Enter in a highlighted box sends its form without any click.
@@ -901,6 +912,7 @@
   // Enter in a highlighted one-line box means she is done with it, even when
   // the page sends it with JavaScript instead of a form.
   function onKeyDown(event) {
+    if (event.key === "Tab") lastTabAt = performance.now();
     if (event.key === "Escape") clearHighlights();
     if (event.key !== "Enter" || event.isComposing) return;
     const el = highlightedTarget(event);
@@ -947,6 +959,8 @@
   }
 
   chrome.runtime.onMessage.addListener(onMessage);
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("focusin", onFocusIn, true);
   document.addEventListener("click", onClick, true);
   document.addEventListener("change", onChange, true);
   document.addEventListener("focusout", onFocusOut, true);
@@ -958,6 +972,8 @@
 
   window.__seniorHelperCleanup = () => {
     clearHighlights();
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("focusin", onFocusIn, true);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("change", onChange, true);
     document.removeEventListener("focusout", onFocusOut, true);

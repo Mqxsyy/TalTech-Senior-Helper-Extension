@@ -1,12 +1,6 @@
 # Veebiabiline: setup guide
 
-Veebiabiline ("web helper") is a Chrome extension that adds a chat panel next to any web page. Grandma types (or says) a question like "Kuidas ma sisse login?". The helper reads the page, answers in a few simple Estonian sentences, and draws a big orange box around the button she needs. Everything she sees is in Estonian.
-
-This guide is for the family member setting it up. It takes about 15 minutes.
-
----
-
-## 1. What you need
+## 1. Requirements
 
 - **Google Chrome** version 116 or newer, on Windows, Mac, or Linux.
 - **Node.js** 18 or newer, from <https://nodejs.org>. You need it once, to build the extension. Grandma's computer does not need it.
@@ -78,10 +72,12 @@ The settings page opens by itself after installing. To open it later, right-clic
 
 - **Open the helper:** click the blue speech-bubble icon at the top right of Chrome. It stays open while she browses.
 - **Ask:** type in the box labelled **Sinu küsimus** and press Enter or click **Küsi**. Or click **Räägi**, talk, and stop talking. The question sends itself.
-- **Follow the box:** the orange box shows where to click. It goes away when she clicks the highlighted thing or presses Escape.
-- **Step by step, by itself:** the helper gives one step at a time. When she clicks the thing in the orange box, fills in the highlighted boxes (pressing Enter, moving on, or just pausing after typing), or the page changes, the helper shows the next step automatically, until the whole task is done. The chat shows a small "Tehtud." line. She does not need to ask "what next?".
+- **Follow the box:** the orange box shows where to click. It goes away when she clicks the highlighted thing or presses Escape. When she clicks into a highlighted field, its box steps aside, so a calendar or list the field opens stays readable.
+- **Questions get answers, tasks get steps:** "Mis leht see on?" gets a short answer, "Kus on ostukorv?" gets a box around the cart, and that is all. When she asks to get something done ("Kuidas ma pileti ostan?"), the helper gives one step at a time. When she clicks the thing in the orange box, fills in the highlighted boxes (pressing Enter, moving on, pausing for 6 seconds after typing, or picking a day or item from a calendar or list), or sends their form, the chat shows a small "Tehtud." line and the next step, until the task is done.
+- **Her choices stay hers:** the helper checks the page against what she asked for (places, date, time, amount) and fixes a wrong date before searching. It asks her which time, seat or product she wants instead of picking one, and says what she is about to pay for before she pays.
+- **Nothing else is watched:** if she clicks something else or goes to another page, the helper stays quiet. She asks again when she wants help, and "Mis nüüd?" carries on the task.
 - **Ma ei leia seda** ("I can't find it"): under the newest answer while an orange box is shown. The helper looks again more carefully (with a stronger, pricier model for that one answer) and explains differently.
-- **Peata** (stop): shown while the helper is thinking. Stops the answer. Asking a new question also stops the old answer.
+- **Peata** (stop): shown while the helper is thinking. Stops the answer and the task. Asking a new question also stops the old answer.
 - **Alusta uuesti:** this button clears the conversation and shows the example questions again.
 - **Loe ette:** the newest answer has this button to hear it spoken, if the computer has an Estonian voice.
 
@@ -101,15 +97,15 @@ Gemini costs nothing up to Google's free daily limit; after that it stops until 
 
 What is sent to Anthropic (or Google, with Gemini) for each question:
 
-- the question
-- a screenshot of what is on screen, with fields she typed into painted over in grey
+- the question, and today's date and time
+- a screenshot of what is on screen, with fields she typed into or chose in painted over in grey
 - the page title and address (without the part after `?`, which can contain personal data)
 - the text visible on screen
 - labels of buttons, links, and fields
 
 What is never sent:
 
-- what is typed into fields, including passwords, card numbers, and email addresses. The helper only sees whether a field is filled in or empty, and those fields are covered in the screenshot.
+- what is typed or chosen in fields, including passwords, card numbers, email addresses, and the choice in a dropdown. The helper only sees whether a field is filled in or empty, and those fields are covered in the screenshot.
 - cookies or saved data
 - anything from sites on the "välja lülitatud" list
 
@@ -157,7 +153,7 @@ Run `npm run build` and reload the extension after editing.
 
 1. Turn on **Jäta vestlused meelde**, let grandma use the helper for a while, then click **Laadi vestlused alla**.
 2. Open the file. Each answer has the question or event, the page list, the highlighted ids, and timings. Answers she followed with „Ma ei leia seda“ have `"notFound": true`.
-3. For answers you want to test, add `"expected"`: the right ids from the page list, e.g. `"expected": ["e14"]`, or `"expected": []` if nothing should be highlighted.
+3. For answers you want to test, add `"expected"`: the right ids from the page list, e.g. `"expected": ["e14"]`, or `"expected": []` if nothing should be highlighted. Add `"expectedFollow": true` when the answer should keep guiding a task, `false` when it should only answer or point. [test-flows.md](test-flows.md) has flows that make good labelled turns.
 4. Run (this makes real, paid requests):
 
    ```bash

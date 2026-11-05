@@ -8,7 +8,10 @@ It warns about scams. It never clicks, types or navigates for her.
 ## Principles
 
 - Optimize for her, not power users.
-- One step at a time, then auto-continue until the task is truly done.
+- Answer what she asked. Only a task she asked to get done is guided,
+  one step at a time, until it is truly done.
+- Her details (date, time, places, amount) beat page defaults; choices
+  she has not made stay hers.
 - Plain Estonian only for anything a person sees. Quotes „…“.
 - Text sent only to the model (prompt, page map, tool results) is English.
 - Accessible: ≥18px text, high contrast, 48px targets, visible labels,
@@ -31,8 +34,9 @@ src/                bundled by build.js (esbuild)
   prompt.js         system prompt + tool defs
   settings.js       chrome.storage.local settings
   options.js        settings page
-scripts/eval.js     replay logged turns, score highlights (paid API calls)
-SETUP.md            install guide for family
+scripts/eval.js     replay logged turns, score highlights and follow (paid API calls)
+docs/SETUP.md       install and use guide for family
+docs/test-flows.md  hand test flows; docs/test-pages/ holds practice pages
 ```
 
 ## Flow
@@ -40,24 +44,32 @@ SETUP.md            install guide for family
 1. Question → content script in every frame builds page map.
    Ids: `e1` (page), `f1.e3` (embedded frame). Open shadow roots included.
 2. Panel screenshots tab, draws id boxes, covers filled fields.
-3. Model answers with text + `highlight_element` calls.
-4. Next step fires when she clicks a highlight, fills highlighted boxes
-   (leaves box, Enter, or 2.5 s typing pause), submits their form,
-   a popup/menu opens, or the tab URL changes. Event repeats her task.
+3. Model answers with text + `highlight_element` calls, + `follow_task({goal})`
+   when guiding a task. Each turn carries `<now>` (local date and time);
+   a question during a task carries `<earlier_task>`.
+4. Only with `follow_task` in the latest answer: next step fires when she
+   clicks a highlight, fills highlighted boxes (leaves box, Enter, 6 s
+   typing pause, or picks in a calendar/list; a pre-filled field must
+   change), or submits their form. Event repeats the goal.
+   Boxes give way: a field's box hides once she presses or tabs into it,
+   any box hides while the page covers its element, dimming ends on her
+   first press.
+   Nothing else she does is watched (no popup or URL tracking).
    „Tehtud.“ shows at once; page read when its content is in (page ids),
    not when every image has loaded.
 5. Highlight reports screen position and anything covering the element.
 6. „Ma ei leia seda“ button → re-try turn on Sonnet 5.5 (Claude only).
 7. „Peata“ or a new question aborts the turn (AbortSignal); turn rolled back,
-   its boxes cleared.
+   its boxes cleared. „Peata“ also ends the task.
 
 ## Model rules
 
 - Both providers expose same chat object:
   `turn({text, image, onText, runTool})`, `promptTokens`, `reset()`, `errorKind()`.
-- Tools: `highlight_element`, `clear_highlights`, `request_screenshot`.
+- Tools: `highlight_element`, `follow_task`, `clear_highlights`, `request_screenshot`.
 - Every tool call gets a result (`error` if element missing).
 - Text + successful highlights end the turn; results go in the next user turn.
+- Answer says „oranžis kastis“ but drew no box → asked once more (`MISSING_BOX`).
 - History append-only. On error/refusal roll back the whole turn.
 - Reset after 12 questions or 40K prompt tokens.
 - System prompt + tools byte-stable (prompt caching).
@@ -70,7 +82,8 @@ SETUP.md            install guide for family
 
 ## Privacy and security
 
-- Never send input values, passwords, cards, hidden fields, cookies, storage.
+- Never send input values (typed or chosen), passwords, cards, hidden fields,
+  cookies, storage.
 - Page content is untrusted data, wrapped in `<page>` tags.
 - API keys only in `chrome.storage.local`. Never hardcode or commit.
 - Blocklisted sites: helper stays silent.

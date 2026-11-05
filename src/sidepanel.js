@@ -37,6 +37,10 @@ const ERROR_STRINGS = { auth: STRINGS.badKey, busy: STRINGS.busy, offline: STRIN
 const CANNOT_READ_PAGE =
   "(The helper cannot read this page. It may be a browser settings page, the Chrome Web Store, a PDF, or another special page.)";
 
+// Sent when an answer tells her to look at an orange box but drew none.
+const MISSING_BOX =
+  "<event>\nYour last answer tells her to look at an orange box, but you highlighted nothing, so there is no box on her screen. Call highlight_element for each thing your answer is about, then write the answer again. If you are guiding her task, call follow_task again.\n</event>";
+
 // Start a fresh conversation after this many questions, or once a request
 // grows past this many tokens (every old screenshot and page list is resent;
 // Haiku also charges more above 100K), to keep requests small and cheap.
@@ -64,6 +68,8 @@ let settings;
 let assistant = null;
 let voice = null;
 let questionCount = 0;
+// Goal of the task being guided (from follow_task), or "" when the helper is
+// not following one: then acting on a box starts no new answer.
 let task = "";
 let busy = false;
 let recognition = null;
@@ -71,8 +77,6 @@ let recognition = null;
 let stepTabId = null;
 // A step she finished while the helper was still answering.
 let queuedStep = null;
-// Page load the latest page list came from; tells a new page from the old one.
-let lastPageId = null;
 // Id prefix ("" or "f1.") -> frameId, from the latest page scan.
 let frameIds = new Map([["", 0]]);
 // Recorded turn of the newest answer, if recording is on.
@@ -80,6 +84,11 @@ let lastTurnId = null;
 const { id: windowId } = await chrome.windows.getCurrent();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// "Thursday, 5 November 2026 at 14:32", the computer's local time, so the
+// model can turn „homme“ into a date.
+const formatNow = () =>
+  new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 // ---------- Settings ----------
 
@@ -301,7 +310,8 @@ async function captureScreenshot(tab, markData) {
 // ---------- Tools the model can call ----------
 
 // Returns { text, image?, error? } for claude.js / gemini.js to wrap.
-async function runTool(tab, name, input) {
+// `onFollow(goal)` records a follow_task call for the turn being answered.
+async function runTool(tab, name, input, onFollow) {
   try {
     switch (name) {
       case "highlight_element": {
@@ -326,6 +336,12 @@ async function runTool(tab, name, input) {
         return {
           text: `Highlighted the ${response.description} (${response.position} of her screen). It is now on her screen with the label "${input.label}".`,
         };
+      }
+      case "follow_task": {
+        const goal = typeof input?.goal === "string" ? input.goal.trim() : "";
+        if (!goal) return { error: true, text: "goal must be a sentence describing her task." };
+        onFollow(goal);
+        return { text: "Following her task. When she does a highlighted step, you get an <event> with the new page." };
       }
       case "clear_highlights":
         await clearHighlights(tab);
@@ -356,11 +372,11 @@ async function ask(rawQuestion) {
   // A new question replaces whatever was being answered or waiting.
   await interrupt();
   queuedStep = null;
-  task = question;
-  await converse(question, `<question>\n${question}\n</question>`, { newQuestion: true });
+  const earlier = task ? `\n<earlier_task>\n${task}\n</earlier_task>` : "";
+  await converse(question, `<question>\n${question}\n</question>${earlier}`, { newQuestion: true });
 }
 
-// She did the highlighted step: show the next one without her asking.
+// She did the highlighted step of a followed task: show the next one without her asking.
 // "Tehtud." appears right away; the page is read once it is ready.
 async function continueAfterStep({ description, pageId }) {
   await converse(
@@ -376,7 +392,7 @@ async function notFound() {
   if (lastTurnId !== null) markTurn(lastTurnId, { notFound: true }).catch(console.error);
   await converse(
     STRINGS.notFound + ".",
-    `<event>\nShe pressed "I can't find it": she cannot see or find what you highlighted.\nHer task: ${task}\nLook at the screenshot and page list again. Check that you picked the right thing and that nothing covers it. Then describe it differently (colour, place, the words on it) and highlight it again, or pick a better one.\n</event>`,
+    `<event>\nShe pressed "I can't find it": she cannot see or find what you highlighted.\n${task ? `Her task: ${task}\n` : ""}Look at the screenshot and page list again. Check that you picked the right thing and that nothing covers it. Then describe it differently (colour, place, the words on it) and highlight it again, or pick a better one.\n</event>`,
     { newQuestion: false, who: "her", escalate: true }
   );
 }
@@ -409,24 +425,21 @@ async function waitForPageLoad(oldPageId, signal) {
   if (tab) await chrome.tabs.sendMessage(tab.id, { type: "waitForQuiet" }, { frameId: 0 }).catch(() => {});
 }
 
-function stepDone(description, pageId = lastPageId) {
+// While an answer is still coming, it is not known yet whether it follows a
+// task: keep the step and decide when the answer is done.
+function stepDone(description, pageId) {
   stepTabId = null;
   if (busy) {
     queuedStep = { description, pageId };
     return;
   }
-  continueAfterStep({ description, pageId });
+  if (task) continueAfterStep({ description, pageId });
 }
 
-// She clicked a highlight, filled in the highlighted boxes, or sent their form.
+// She clicked a highlight, filled in the highlighted boxes, or sent their
+// form. Nothing else she does on the page is watched.
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type === "highlightDone" && sender.tab?.windowId === windowId) stepDone(message.description, message.pageId);
-});
-
-// She went to another page some other way (Enter key, another link, the
-// page moved on by itself): follow her there.
-chrome.tabs.onUpdated.addListener((tabId, change) => {
-  if (change.url && tabId === stepTabId) stepDone("went to another page");
 });
 
 // The turn being answered, for timing and the optional log.
@@ -468,6 +481,7 @@ function record({ tab, kind, prompt, text, screenshot, answer, outcome }) {
     answer,
     outcome,
     highlights: turnLog.highlights,
+    retriedBox: Boolean(turnLog.retriedBox),
     ms: turnLog.ms,
     promptTokens: assistant?.promptTokens,
   })
@@ -512,7 +526,6 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
 
     await clearHighlights(tab);
     const page = await getPageMap(tab);
-    lastPageId = page?.pageId ?? null;
     const pageText = page?.text ?? `Title: ${tab.title ?? "(unknown)"}\n${CANNOT_READ_PAGE}`;
 
     let screenshot = null;
@@ -542,17 +555,31 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
       reply.scrollIntoView({ block: "end" });
     };
 
-    const text = `<page>\n${pageText}\n</page>\n\n${prompt}`;
+    const text = `<now>${formatNow()}</now>\n\n<page>\n${pageText}\n</page>\n\n${prompt}`;
+    let followGoal = null;
     let outcome = "error";
+    const tools = (name, input) => runTool(tab, name, input, (goal) => (followGoal = goal));
     try {
-      outcome = await assistant.turn({
-        text,
-        image: screenshot,
-        onText,
-        runTool: (name, input) => runTool(tab, name, input),
-        escalate,
-        signal,
-      });
+      outcome = await assistant.turn({ text, image: screenshot, onText, runTool: tools, escalate, signal });
+      // Smaller models sometimes write „oranžis kastis“ and skip the tool.
+      // Ask once more; she sees only the new answer, or the first if that fails.
+      if (outcome === "done" && /oranž/i.test(answer) && !turnLog.highlights.some((h) => h.ok)) {
+        const firstAnswer = answer;
+        turnLog.retriedBox = true;
+        answer = "";
+        replyText.textContent = STRINGS.thinking;
+        let retry = "error";
+        try {
+          retry = await assistant.turn({ text: MISSING_BOX, onText, runTool: tools, escalate, signal });
+        } catch (error) {
+          if (signal.aborted) throw error;
+          console.error(error);
+        }
+        if (retry !== "done") {
+          answer = firstAnswer;
+          replyText.textContent = answer;
+        }
+      }
     } finally {
       turnLog.ms.total = Math.round(performance.now() - turnLog.start);
       const { pageReady, sent, firstText, firstHighlight, total } = turnLog.ms;
@@ -565,7 +592,11 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
     }
 
     const showedBoxes = stepTabId !== null;
+    // An answer follows her task only if it called follow_task. A failed
+    // turn keeps the task, so asking again can pick it up.
+    if (outcome === "done") task = followGoal ?? "";
     if (outcome === "refusal") {
+      task = "";
       finishMessage(reply, STRINGS.refusal, false);
     } else if (outcome === "too_many_steps") {
       finishMessage(reply, answer.trim() || STRINGS.tooLong, false, showedBoxes);
@@ -661,7 +692,11 @@ $("start-over").addEventListener("click", async () => {
 });
 
 $("open-settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
-stopButton.addEventListener("click", () => interrupt());
+// „Peata“ also ends the task: no more steps until she asks again.
+stopButton.addEventListener("click", async () => {
+  await interrupt();
+  task = "";
+});
 micButton.addEventListener("click", () => (recognition ? recognition.stop() : startListening()));
 
 micButton.textContent = STRINGS.speak;

@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- Practice ticket shop for docs/test-flows.md. Nothing is sold or sent anywhere. -->
+<html lang="et">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proovibuss – bussipiletid</title>
+    <style>
+      body { margin: 0; font: 18px/1.5 system-ui, sans-serif; background: #f4f6f8; color: #1a1a1a; }
+      header { background: #0b5394; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+      header a { color: #fff; }
+      main { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+      .card { background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+      label { display: block; margin: 12px 0 4px; font-weight: 600; }
+      input { font: inherit; padding: 8px 10px; width: 100%; box-sizing: border-box; border: 1px solid #888; border-radius: 6px; }
+      button { font: inherit; padding: 10px 18px; border-radius: 8px; border: 0; background: #0b5394; color: #fff; cursor: pointer; }
+      button.plain { background: #e6edf5; color: #0b5394; }
+      .row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid #ddd; }
+      .days { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+      dialog { border: 0; border-radius: 12px; padding: 20px 24px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3); }
+      dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+      .note { font-size: 15px; color: #555; }
+      footer { text-align: center; font-size: 14px; color: #666; padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Proovibuss</strong>
+      <nav><a href="#">Minu piletid</a> · <a href="#">Ostukorv</a> · <a href="#">Logi sisse</a></nav>
+    </header>
+    <main>
+      <p class="note">Harjutusleht. Siin ei müüda päris pileteid ja midagi ei saadeta kuhugi.</p>
+
+      <section id="search" class="card">
+        <h1>Osta bussipilet</h1>
+        <form id="search-form">
+          <label for="from">Kust</label>
+          <input id="from" autocomplete="off" />
+          <label for="to">Kuhu</label>
+          <input id="to" autocomplete="off" />
+          <label>Kuupäev</label>
+          <button type="button" id="date-button" class="plain"></button>
+          <label for="people">Reisijaid</label>
+          <input id="people" type="number" min="1" max="9" value="1" />
+          <p><button type="submit">Otsi</button></p>
+        </form>
+      </section>
+
+      <section id="results" class="card" hidden>
+        <h2 id="results-title"></h2>
+        <div id="departures"></div>
+        <p><button type="button" class="plain" id="back-to-search">Muuda otsingut</button></p>
+      </section>
+
+      <section id="summary" class="card" hidden>
+        <h2>Kontrolli ostu</h2>
+        <p id="summary-text"></p>
+        <p><button type="button" id="pay">Maksa</button> <button type="button" class="plain" id="back-to-results">Tagasi</button></p>
+      </section>
+
+      <section id="done" class="card" hidden>
+        <h2>Aitäh! Pilet on ostetud.</h2>
+        <p id="done-text"></p>
+      </section>
+    </main>
+    <footer>Proovibuss · Klienditugi · Reisitingimused</footer>
+
+    <dialog id="calendar" aria-labelledby="calendar-title">
+      <h2 id="calendar-title">Vali kuupäev</h2>
+      <div class="days" id="days"></div>
+      <p><button type="button" class="plain" id="close-calendar">Sulge</button></p>
+    </dialog>
+
+    <dialog id="cookies" aria-labelledby="cookies-title">
+      <h2 id="cookies-title">Kasutame küpsiseid</h2>
+      <p>Küpsised aitavad meil lehte paremaks teha.</p>
+      <p><button type="button" id="cookies-all">Nõustun</button> <button type="button" class="plain" id="cookies-needed">Luba ainult vajalikud</button></p>
+    </dialog>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const today = new Date();
+      let chosenDay = 0;
+      let chosenTime = null;
+      const DEPARTURES = [
+        { time: "08:00", price: "12,00" },
+        { time: "13:30", price: "10,50" },
+        { time: "22:00", price: "8,90" },
+      ];
+
+      const dayDate = (offset) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+      const dayName = (offset) => dayDate(offset).toLocaleDateString("et-EE", { weekday: "long", day: "numeric", month: "long" });
+      const dayLabel = (offset) => (offset === 0 ? "Täna, " : offset === 1 ? "Homme, " : "") + dayName(offset);
+      const show = (id) => ["search", "results", "summary", "done"].forEach((s) => ($(s).hidden = s !== id));
+
+      function renderDate() {
+        $("date-button").textContent = dayLabel(chosenDay);
+      }
+
+      for (let offset = 0; offset < 7; offset++) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "plain";
+        button.textContent = dayLabel(offset);
+        button.addEventListener("click", () => {
+          chosenDay = offset;
+          renderDate();
+          $("calendar").close();
+        });
+        $("days").append(button);
+      }
+
+      $("date-button").addEventListener("click", () => $("calendar").showModal());
+      $("close-calendar").addEventListener("click", () => $("calendar").close());
+      $("cookies-all").addEventListener("click", () => $("cookies").close());
+      $("cookies-needed").addEventListener("click", () => $("cookies").close());
+
+      $("search-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const from = $("from").value.trim() || "Tallinn";
+        const to = $("to").value.trim() || "Tartu";
+        $("results-title").textContent = `${from} → ${to}, ${dayName(chosenDay)}`;
+        $("departures").replaceChildren(
+          ...DEPARTURES.map((departure) => {
+            const row = document.createElement("div");
+            row.className = "row";
+            row.innerHTML = `<span><strong>${departure.time}</strong> · ${departure.price} €</span>`;
+            const choose = document.createElement("button");
+            choose.type = "button";
+            choose.textContent = "Vali";
+            choose.setAttribute("aria-label", `Vali buss kell ${departure.time}`);
+            choose.addEventListener("click", () => {
+              chosenTime = departure;
+              const people = Number($("people").value) || 1;
+              $("summary-text").textContent = `${from} → ${to}, ${dayName(chosenDay)} kell ${departure.time}, ${people} reisija(t). Hind ${departure.price} € inimese kohta.`;
+              show("summary");
+            });
+            row.append(choose);
+            return row;
+          })
+        );
+        show("results");
+      });
+
+      $("back-to-search").addEventListener("click", () => show("search"));
+      $("back-to-results").addEventListener("click", () => show("results"));
+      $("pay").addEventListener("click", () => {
+        $("done-text").textContent = `Sinu pilet: ${$("summary-text").textContent}`;
+        show("done");
+      });
+
+      renderDate();
+      $("cookies").showModal();
+    </script>
+  </body>
+</html>
