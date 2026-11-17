@@ -47,19 +47,20 @@ docs/test-flows.md  hand test flows; docs/test-pages/ holds practice pages
 3. Model answers with text + `highlight_element` calls, + `follow_task({goal})`
    when guiding a task. Each turn carries `<now>` (local date and time);
    a question during a task carries `<earlier_task>`.
-4. Only with `follow_task` in the latest answer: next step fires when she
-   clicks a highlight, fills highlighted boxes (leaves box, Enter, 6 s
-   typing pause, or picks in a calendar/list; a pre-filled field must
-   change), or submits their form. Event repeats the goal.
-   Boxes give way: a field's box hides once she presses or tabs into it,
-   any box hides while the page covers its element, dimming ends on her
-   first press.
-   Nothing else she does is watched (no popup or URL tracking).
-   „Tehtud.“ shows at once; page read when its content is in (page ids),
-   not when every image has loaded.
+4. One question, one step: nothing she does on the page starts an answer.
+   `follow_task` only stores the goal and shows a „Mis edasi?“ button under
+   the answer; her next question (that button, or typed) carries it, and the model reads the page as it is then (she may have
+   gone ahead on her own).
+   Boxes clear once she does their step (clicks one, fills the boxes,
+   Enter, submits, picks in a calendar/list). Boxes give way: a field's
+   box hides once she presses or tabs into it, any box hides while the
+   page covers its element, dimming ends on her first press.
 5. Highlight reports screen position and anything covering the element.
-6. „Ma ei leia seda“ button → re-try turn on Sonnet 5.5 (Claude only).
-7. „Peata“ or a new question aborts the turn (AbortSignal); turn rolled back,
+6. No website open (new tab, Chrome's own page): model names 2-3 Estonian
+   sites for her task, says to type one in the address bar, and keeps the
+   task for her next question.
+7. „Ma ei leia seda“ button → re-try turn on Sonnet 5.5 (Claude only).
+8. „Peata“ or a new question aborts the turn (AbortSignal); turn rolled back,
    its boxes cleared. „Peata“ also ends the task.
 
 ## Model rules

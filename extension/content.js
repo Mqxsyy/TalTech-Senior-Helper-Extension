@@ -1,31 +1,22 @@
-// Runs inside every web page. Three jobs:
+// Runs inside every web page. Two jobs:
 //   1. Build a "page map": a short text description of the page and of
 //      everything she can click, type into, or look at, each with an id
 //      (e1, e2, ...), plus screen rectangles so the side panel can label a
 //      screenshot with the same ids.
-//   2. Draw big highlight boxes around elements Claude points at.
-//   3. Tell the side panel when she has done what was highlighted, so the
-//      helper can show the next step without her asking.
+//   2. Draw big highlight boxes around elements Claude points at, and take
+//      them away once she has done what they show. The side panel is not
+//      told: she asks again for the next step.
 //
 // Runs in every frame. The side panel talks to each frame by frameId; ids in
 // embedded frames get a prefix ("f1.e3") chosen by the side panel. Elements
 // inside open shadow roots (web components) are included.
 //
 // Messages from the side panel ({ type, ... }):
-//   ping                        -> { pageId, leaving } (new id for every page load; leaving: a
-//                                  navigation away from this page has started)
 //   locateFrames                -> { ok } top frame only: tells every embedded frame where it is on screen
-//   getPageMap { prefix }       -> { ok, pageId, text, count, marks, viewport } | null (embedded frame not on screen)
+//   getPageMap { prefix }       -> { ok, text, count, marks, viewport } | null (embedded frame not on screen)
 //   getMarks                    -> { ok, marks, viewport }
 //   highlight { id, label }     -> { ok, description, position, coveredBy? } | { ok: false, error }
 //   clearHighlights             -> { ok }   (sent to all frames)
-//   waitForQuiet                -> { ok } once the page has stopped changing (or after a few seconds)
-// Messages to the side panel:
-//   highlightDone { description, pageId }   she clicked a highlighted element,
-//                                   filled in or changed the highlighted boxes (left
-//                                   the box, pressed Enter, stopped typing for a while,
-//                                   or picked in a calendar or list), or sent their form. Nothing else she does is
-//                                   watched.
 //
 // Rectangles in page maps and marks are in screen coordinates of the top
 // frame, so the side panel can draw them on one screenshot.
@@ -45,15 +36,6 @@
   const MAX_FRAME_TEXT_CHARS = 600;
   const MAX_NAME_CHARS = 80;
   const MAX_POINTER_SCAN = 5000;
-  // She has stopped typing in the last highlighted box this long: step done.
-  // Long enough for a slow typist looking for the next key.
-  const TYPING_PAUSE_MS = 6000;
-  // Lets the side panel tell a freshly loaded page from the old one.
-  const PAGE_ID = Math.random().toString(36).slice(2);
-  // When this page started navigating away. Cleared after a while in case the
-  // navigation was cancelled (a download, a link that goes nowhere).
-  let leavingSince = 0;
-  const LEAVING_MS = 8000;
 
   const INTERACTIVE = [
     "a[href]",
@@ -547,7 +529,7 @@
     });
     if (!elements.length) lines.push("(none found)");
 
-    return { pageId: PAGE_ID, text: lines.join("\n"), count: elements.length, ...marks() };
+    return { text: lines.join("\n"), count: elements.length, ...marks() };
   }
 
   // ---------- Highlights ----------
@@ -662,7 +644,6 @@
 
   function clearHighlights() {
     cancelAnimationFrame(frame);
-    clearTimeout(typingTimer);
     highlights = [];
     host?.remove();
     host = null;
@@ -797,24 +778,14 @@
     return kindOf(highlight.el) !== "heading";
   }
 
-  function done(el, verb) {
-    report(`${verb} the ${kindOf(el)} "${nameOf(el)}"`);
-  }
-
-  function report(description) {
-    clearHighlights();
-    try {
-      chrome.runtime.sendMessage({ type: "highlightDone", description, pageId: PAGE_ID }).catch(() => {});
-    } catch {
-      // Extension was reloaded; this copy can no longer talk to it.
-    }
-  }
+  // The step is done: the boxes have shown what they had to.
+  const done = clearHighlights;
 
   // Clicking a button or link completes the step. Clicking into a text box or
   // dropdown does not: the step is done when she has typed or chosen something.
   function onClick(event) {
     const el = highlightedAt(event);
-    if (el && !isChangeField(el) && kindOf(el) !== "heading") done(el, "clicked");
+    if (el && !isChangeField(el) && kindOf(el) !== "heading") done();
   }
 
   // With several highlighted boxes (name and password, or a box and the
@@ -827,7 +798,7 @@
     const highlight = highlights.find((h) => h.el === el);
     if (!highlight || !isChangeField(el) || !changed(highlight)) return;
     if (highlights.some((other) => other !== highlight && stillToDo(other))) return;
-    done(el, el.tagName === "SELECT" ? "made a choice in" : "filled in");
+    done();
   }
 
   // "change" does not leave shadow roots, so also notice when she leaves a
@@ -841,19 +812,11 @@
     }, 0);
   }
 
-  // Typing alone fires no "change" until she leaves the box. When she stops
-  // typing for a moment in the last thing she has to do, move on.
-  let typingTimer = 0;
-
+  // A value she typed is not a pick in a calendar or list.
   function onInput(event) {
     const el = highlightedTarget(event);
-    if (!el || !isTextField(el)) return;
-    const highlight = highlights.find((h) => h.el === el);
+    const highlight = el && isTextField(el) && highlights.find((h) => h.el === el);
     if (highlight) highlight.typed = true;
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(() => {
-      if (isFilled(el) && highlights.some((highlight) => highlight.el === el)) fieldDone(el);
-    }, TYPING_PAUSE_MS);
   }
 
   // Once she presses anywhere, the dimming has done its job. Pressing into a
@@ -881,32 +844,7 @@
   // Pressing Enter in a highlighted box sends its form without any click.
   function onSubmit(event) {
     const highlight = highlights.find(({ el }) => event.target.contains(el));
-    if (highlight) done(highlight.el, "sent the form with");
-  }
-
-  // ---------- Waiting for the page to settle ----------
-
-  // Pages built with JavaScript keep changing after they have "loaded".
-  // Answers once nothing has changed for a moment, or after a few seconds.
-  function waitForQuiet(sendResponse) {
-    const QUIET_MS = 500;
-    const MAX_MS = 1500;
-    let finished = false;
-    let quietTimer = setTimeout(finish, QUIET_MS);
-    const maxTimer = setTimeout(finish, MAX_MS);
-    const observer = new MutationObserver(() => {
-      clearTimeout(quietTimer);
-      quietTimer = setTimeout(finish, QUIET_MS);
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-    function finish() {
-      if (finished) return;
-      finished = true;
-      observer.disconnect();
-      clearTimeout(quietTimer);
-      clearTimeout(maxTimer);
-      sendResponse({ ok: true });
-    }
+    if (highlight) done();
   }
 
   // Enter in a highlighted one-line box means she is done with it, even when
@@ -917,23 +855,14 @@
     if (event.key !== "Enter" || event.isComposing) return;
     const el = highlightedTarget(event);
     if (el && isTextField(el) && el.tagName !== "TEXTAREA" && !el.isContentEditable && isFilled(el)) {
-      done(el, "pressed Enter in");
+      done();
     }
-  }
-
-  // Fires as soon as she clicks a link to another page, before the new page
-  // arrives, so the side panel knows not to read this one again.
-  function onLeaving() {
-    leavingSince = performance.now();
   }
 
   // ---------- Messaging ----------
 
   function onMessage(message, _sender, sendResponse) {
     switch (message?.type) {
-      case "ping":
-        sendResponse({ pageId: PAGE_ID, leaving: performance.now() - leavingSince < LEAVING_MS });
-        break;
       case "locateFrames":
         locateFrames();
         // Give nested frames a moment to receive and pass on their place.
@@ -952,9 +881,6 @@
         clearHighlights();
         sendResponse({ ok: true });
         break;
-      case "waitForQuiet":
-        waitForQuiet(sendResponse);
-        return true;
     }
   }
 
@@ -965,7 +891,6 @@
   document.addEventListener("change", onChange, true);
   document.addEventListener("focusout", onFocusOut, true);
   document.addEventListener("input", onInput, true);
-  window.addEventListener("beforeunload", onLeaving);
   document.addEventListener("submit", onSubmit, true);
   document.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("message", onWindowMessage);
@@ -978,7 +903,6 @@
     document.removeEventListener("change", onChange, true);
     document.removeEventListener("focusout", onFocusOut, true);
     document.removeEventListener("input", onInput, true);
-    window.removeEventListener("beforeunload", onLeaving);
     document.removeEventListener("submit", onSubmit, true);
     document.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("message", onWindowMessage);

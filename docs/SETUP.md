@@ -73,9 +73,9 @@ The settings page opens by itself after installing. To open it later, right-clic
 - **Open the helper:** click the blue speech-bubble icon at the top right of Chrome. It stays open while she browses.
 - **Ask:** type in the box labelled **Sinu küsimus** and press Enter or click **Küsi**. Or click **Räägi**, talk, and stop talking. The question sends itself.
 - **Follow the box:** the orange box shows where to click. It goes away when she clicks the highlighted thing or presses Escape. When she clicks into a highlighted field, its box steps aside, so a calendar or list the field opens stays readable.
-- **Questions get answers, tasks get steps:** "Mis leht see on?" gets a short answer, "Kus on ostukorv?" gets a box around the cart, and that is all. When she asks to get something done ("Kuidas ma pileti ostan?"), the helper gives one step at a time. When she clicks the thing in the orange box, fills in the highlighted boxes (pressing Enter, moving on, pausing for 6 seconds after typing, or picking a day or item from a calendar or list), or sends their form, the chat shows a small "Tehtud." line and the next step, until the task is done.
+- **Questions get answers, tasks get steps:** "Mis leht see on?" gets a short answer, "Kus on ostukorv?" gets a box around the cart, and that is all. When she asks to get something done ("Kuidas ma pileti ostan?"), the helper gives the first step and ends with „Siis vajuta „Mis edasi?“.“ She does the step, then clicks the big **Mis edasi?** button under the answer (or asks "Mis edasi?") for the next one, until the task is done. If she does a few steps on her own, the helper carries on from wherever she is.
 - **Her choices stay hers:** the helper checks the page against what she asked for (places, date, time, amount) and fixes a wrong date before searching. It asks her which time, seat or product she wants instead of picking one, and says what she is about to pay for before she pays.
-- **Nothing else is watched:** if she clicks something else or goes to another page, the helper stays quiet. She asks again when she wants help, and "Mis nüüd?" carries on the task.
+- **Nothing is watched:** whatever she clicks or wherever she goes, the helper stays quiet until she asks.
 - **Ma ei leia seda** ("I can't find it"): under the newest answer while an orange box is shown. The helper looks again more carefully (with a stronger, pricier model for that one answer) and explains differently.
 - **Peata** (stop): shown while the helper is thinking. Stops the answer and the task. Asking a new question also stops the old answer.
 - **Alusta uuesti:** this button clears the conversation and shows the example questions again.
@@ -89,7 +89,7 @@ Things the helper never does:
 
 ## 8. Cost
 
-The helper uses Claude Haiku 5.5, the cheapest Claude model. Each question or automatic next step costs roughly 0.1 to 0.5 US cents, including a screenshot, so $5 of credit lasts for a few thousand questions. This is an estimate. Long conversations and screenshots cost more. The helper starts a fresh conversation every 12 questions, or sooner when a conversation gets long, to keep requests small.
+The helper uses Claude Haiku 5.5, the cheapest Claude model. Each question costs roughly 0.1 to 0.5 US cents, including a screenshot, so $5 of credit lasts for a few thousand questions. This is an estimate. Long conversations and screenshots cost more. The helper starts a fresh conversation every 12 questions, or sooner when a conversation gets long, to keep requests small.
 
 Gemini costs nothing up to Google's free daily limit; after that it stops until the next day. Actual usage is listed in the Console under **Usage**. The spend limit from step 2 is the safety net.
 
@@ -152,7 +152,7 @@ Run `npm run build` and reload the extension after editing.
 ## 13. Improving the helper
 
 1. Turn on **Jäta vestlused meelde**, let grandma use the helper for a while, then click **Laadi vestlused alla**.
-2. Open the file. Each answer has the question or event, the page list, the highlighted ids, and timings. Answers she followed with „Ma ei leia seda“ have `"notFound": true`.
+2. Open the file. Each answer has the question, the page list, the highlighted ids, and timings. Answers she followed with „Ma ei leia seda“ have `"notFound": true`.
 3. For answers you want to test, add `"expected"`: the right ids from the page list, e.g. `"expected": ["e14"]`, or `"expected": []` if nothing should be highlighted. Add `"expectedFollow": true` when the answer should keep guiding a task, `false` when it should only answer or point. [test-flows.md](test-flows.md) has flows that make good labelled turns.
 4. Run (this makes real, paid requests):
 

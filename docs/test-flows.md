@@ -21,25 +21,27 @@ Hand tests for the helper's behaviour, run in Chrome with the extension loaded. 
 
 | # | Page | Ask, then do | Pass when |
 | --- | --- | --- | --- |
-| 1 | bussipilet.html | „Kuidas ma ostan homseks bussipileti Tallinnast Tartusse?“ Follow every box. | The cookie notice is handled first. The date is changed to tomorrow before „Otsi“ is highlighted. After the search it asks which time she wants and highlights no single „Vali“ button. Before „Maksa“ it names the date, time and price. It ends with one „Valmis!“ sentence and no box. |
-| 2 | bussipilet.html | „Osta homme hommikune buss Tartusse.“ Follow every box. | After the search it highlights the 8:00 „Vali“ and says it is the morning bus. |
-| 3 | bussipilet.html | Start flow 1. When the date box shows, click „Minu piletid“ in the top menu instead. | The panel stays quiet: no „Tehtud.“, no new answer. |
+| 1 | bussipilet.html | „Kuidas ma ostan homseks bussipileti Tallinnast Tartusse?“ Do each step, then press **Mis edasi?** | Each answer gives one step, ends with „Siis vajuta „Mis edasi?“.“ and has a **Mis edasi?** button; doing a step starts no answer. After the last „Valmis!“ answer the button is gone. The cookie notice is handled first. The date is changed to tomorrow before „Otsi“ is highlighted. The place boxes are highlighted without „Otsi“ and without „vajuta Enter“ (the date still needs changing). After the search it asks which time she wants and highlights none of the „Vali“ buttons. Before „Maksa“ it names the date, time and price. It ends with one „Valmis!“ sentence and no box. |
+| 2 | bussipilet.html | „Osta homme hommikune buss Tartusse.“ Do each step, then press **Mis edasi?** | After the search it highlights the 8:00 „Vali“ and says it is the morning bus. |
+| 3 | bussipilet.html | Start flow 1. After the first answer, close the cookie notice, fill in both places and the date yourself, then press **Mis edasi?** | The answer starts from where the page is: it highlights „Otsi“, not the cookie notice or the places again. |
 | 4 | bussipilet.html | Start flow 1. After the first step, ask „Mida tähendab väljumine?“, then „Mis nüüd?“ | The first question gets a short answer. „Mis nüüd?“ carries on with the ticket from where the page is. |
 | 5 | bussipilet.html | Start flow 1, and after the first step press **Peata** while it thinks. | The answer stops with „Peatatud.“ and every box leaves the page. |
-| 6 | bussipilet.html | Close the cookie notice yourself, then ask „Kus on ostukorv?“ and click the box. | One box on „Ostukorv“ with a label like „Siin on ostukorv“, no next step in the text. The click starts no new answer and shows no „Tehtud.“. |
+| 6 | bussipilet.html | Close the cookie notice yourself, then ask „Kus on ostukorv?“ and click the box. | One box on „Ostukorv“ with a label like „Siin on ostukorv“, no next step in the text. The click removes the box and starts no answer. |
 | 7 | bussipilet.html | „Mis leht see on?“ | Short answer in words, no next step, at most one box. |
-| 8 | bussipilet.html | Start flow 1. When it asks you to type the places, type very slowly with pauses of 3 to 4 seconds. | No new answer while you type. The next step comes after you leave the box, press Enter, or stop for 6 seconds. |
+| 8 | bussipilet.html | Start flow 1. When it asks you to type the places, type very slowly with pauses of 10 seconds. | No answer and no box comes back while you type or after you stop. |
 | 9 | petuleht.html | „Mida ma tegema pean?“ | It tells you calmly to stop, not to call or pay, to close the page and ask a family member. No box. |
 | 10 | Any news site | „Kas see leht on turvaline?“ | Answer in words, no next step. |
-| 11 | bussipilet.html | Start flow 1, then press **Ma ei leia seda** under the first answer. | The answer describes the place differently (colour, place, words on it) and the step carries on as before. |
-| 12 | <https://elron.ee> | „Kuidas ma ostan homseks rongipileti Tallinnast Tartusse?“ Follow every box; when the date is highlighted, click into it. | When the calendar opens, no box, label or dimming covers it. Picking tomorrow brings the next step. Clicking into the date and away again without picking brings nothing. |
+| 11 | bussipilet.html | Start flow 1, then press **Ma ei leia seda** under the first answer. | The answer describes the place differently (colour, place, words on it); **Mis edasi?** afterwards still carries on the ticket. |
+| 12 | <https://elron.ee> | „Kuidas ma ostan homseks rongipileti Tallinnast Tartusse?“ Press **Mis edasi?** until the date is highlighted, then click into it. | When the calendar opens, no box, label or dimming covers it. Picking tomorrow removes the boxes and starts no answer. |
 | 13 | A site on the "välja lülitatud" list | Any question. | „Sellel veebilehel olen välja lülitatud…“, no request made. |
+| 14 | A new empty tab | „Tahan leiba osta.“ Then type `barbora.ee` in the address bar, press Enter, and press **Mis edasi?** | The first answer names two or three real shops with their addresses (such as barbora.ee, selver.ee), says to type one in the long bar at the top and press Enter, ends with „Kui leht on lahti, vajuta „Mis edasi?“.“, and draws no box. On Barbora, **Mis edasi?** carries on with buying bread. |
+| 15 | <https://barbora.ee> in a fresh window (cookie notice showing) | „Tahan osta piima.“ Do each step, then press **Mis edasi?** | First box: „Ainult vajalikud küpsised“ on the cookie notice, not the empty spot top right. Then only the search box, with „Kirjuta „piim“ ja vajuta Enter“ in the text, no box on the search button. On the results: no boxes, the text says to scroll, pick one and press its add button, and ends with „Siis vajuta „Mis edasi?“.“ |
 
 ## After a run
 
 Download the turns (**Laadi vestlused alla**), label them, and keep the file as the eval set:
 
-- `"expectedFollow": true` on answers in the middle of a task (flows 1, 2, 4 after „Mis nüüd?“, 11), `false` on plain answers and finished tasks (flows 6, 7, 9, 10, and the last answer of flow 1).
+- `"expectedFollow": true` on answers in the middle of a task (every answer of flows 1, 2, 3 and 15 except the last of flow 1; flow 4 after „Mis nüüd?“; 11; both answers of 14), `false` on plain answers and finished tasks (flows 6, 7, 9, 10, and the last answer of flow 1).
 - `"expected": [...]` with the right ids where one box is right (flow 2: the 8:00 „Vali“; flow 6: „Ostukorv“), `"expected": []` where no box is right (flow 9).
 
 Then `ANTHROPIC_API_KEY=... npm run eval -- file.json` replays them; see the top of `scripts/eval.js`.

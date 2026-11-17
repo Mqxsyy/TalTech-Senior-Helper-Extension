@@ -14,8 +14,8 @@
 //      ANTHROPIC_API_KEY=... node scripts/eval.js file.json [--model claude-haiku-5-5] [--effort medium]
 //      GEMINI_API_KEY=... node scripts/eval.js file.json --provider gemini [--model gemini-3.5-flash-lite]
 //
-// Each turn is replayed on its own, without the earlier conversation; events
-// repeat her task, so they still make sense alone.
+// Each turn is replayed on its own, without the earlier conversation; a
+// question during a task carries <earlier_task>, so it still makes sense alone.
 
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";

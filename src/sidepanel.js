@@ -11,7 +11,6 @@ const STRINGS = {
   examples: ["Mis leht see on?", "Kuidas ma sisse login?", "Kas see leht on turvaline?"],
   you: "Sina:",
   helper: "Abiline:",
-  done: "Tehtud.",
   noPage: "Ühtegi lehte pole avatud.",
   thinking: "Mõtlen…",
   stopped: "Peatatud.",
@@ -20,6 +19,9 @@ const STRINGS = {
   listening: "Kuulan… Vajuta, et lõpetada",
   readAloud: "Loe ette",
   notFound: "Ma ei leia seda",
+  // Button under the newest answer while a task is going. The prompt tells
+  // her to press it by this name.
+  nextStep: "Mis edasi?",
   blocked: "Sellel veebilehel olen välja lülitatud. Palun küsi siin abi pereliikmelt.",
   refusal: "Vabandust, sellega ma aidata ei saa. Palun küsi abi pereliikmelt.",
   noAnswer: "Vabandust, ma ei leidnud vastust. Kas saaksid küsida natuke teistmoodi?",
@@ -36,6 +38,14 @@ const ERROR_STRINGS = { auth: STRINGS.badKey, busy: STRINGS.busy, offline: STRIN
 // Sent to the model, not shown to her.
 const CANNOT_READ_PAGE =
   "(The helper cannot read this page. It may be a browser settings page, the Chrome Web Store, a PDF, or another special page.)";
+const NO_WEBSITE = "(No website is open: this tab is empty, Chrome's new tab page, or one of Chrome's own pages.)";
+
+// Chrome hides the address of its own pages (new tab, settings) from an
+// extension without the "tabs" permission, so no address means no website.
+function showsNoWebsite(tab) {
+  const address = tab.url || tab.pendingUrl || "";
+  return !address || /^(about:blank|chrome:\/\/(newtab|new-tab-page)\/|chrome-search:)/.test(address);
+}
 
 // Sent when an answer tells her to look at an orange box but drew none.
 const MISSING_BOX =
@@ -44,7 +54,8 @@ const MISSING_BOX =
 // Start a fresh conversation after this many questions, or once a request
 // grows past this many tokens (every old screenshot and page list is resent;
 // Haiku also charges more above 100K), to keep requests small and cheap.
-// Each <event> repeats her task, so a reset in the middle of a task is safe.
+// Each question repeats her task as <earlier_task>, so a reset in the middle
+// of a task is safe.
 const MAX_QUESTIONS_PER_CONVERSATION = 12;
 const MAX_PROMPT_TOKENS = 40000;
 // About 1,200 image tokens at 16:9; the id tags are drawn after scaling, so
@@ -68,23 +79,19 @@ let settings;
 let assistant = null;
 let voice = null;
 let questionCount = 0;
-// Goal of the task being guided (from follow_task), or "" when the helper is
-// not following one: then acting on a box starts no new answer.
+// Goal of the task she is being guided through (from follow_task), or "".
+// Sent with her next question, so „Mis edasi?“ gives the next step. Nothing
+// she does on the page starts an answer: one question, one step.
 let task = "";
 let busy = false;
 let recognition = null;
-// Tab with orange boxes she has not acted on yet.
-let stepTabId = null;
-// A step she finished while the helper was still answering.
-let queuedStep = null;
-// Id prefix ("" or "f1.") -> frameId, from the latest page scan.
+// The answer being given drew orange boxes.
+let boxesDrawn = false;
+// Id prefix ("" or "f1.") -> frameId, from the latest page scan; empty when
+// the latest page could not be read (new tab, Chrome's own pages).
 let frameIds = new Map([["", 0]]);
 // Recorded turn of the newest answer, if recording is on.
 let lastTurnId = null;
-const { id: windowId } = await chrome.windows.getCurrent();
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 // "Thursday, 5 November 2026 at 14:32", the computer's local time, so the
 // model can turn „homme“ into a date.
 const formatNow = () =>
@@ -121,7 +128,7 @@ function announce(text) {
   setTimeout(() => (announcer.textContent = text), 50);
 }
 
-// who: "her", "helper", or "step" (a short "Tehtud." line after she did a step).
+// who: "her" or "helper".
 function addMessage(who, text) {
   const message = document.createElement("div");
   message.className = `message ${who}`;
@@ -140,23 +147,25 @@ function addMessage(who, text) {
 function addButton(message, className, text, onClick) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = `secondary ${className}`;
+  button.className = className;
   button.textContent = text;
   button.addEventListener("click", onClick);
   message.append(button);
 }
 
 // `showedBoxes`: the answer drew orange boxes, so she may need „Ma ei leia seda“.
+// While a task is going, „Mis edasi?“ asks for its next step.
 function finishMessage(message, text, isError, showedBoxes = false) {
   message.className = isError ? "message helper error" : "message helper";
   message.querySelector(".text").textContent = text;
   // Only the newest answer gets buttons.
   for (const old of log.querySelectorAll(".message-actions")) old.remove();
-  if (showedBoxes || voice) {
+  if (task || showedBoxes || voice) {
     const row = document.createElement("div");
     row.className = "message-actions";
-    if (showedBoxes) addButton(row, "not-found", STRINGS.notFound, notFound);
-    if (voice) addButton(row, "read-aloud", STRINGS.readAloud, () => speak(text));
+    if (task) addButton(row, "next-step", STRINGS.nextStep, () => ask(STRINGS.nextStep));
+    if (showedBoxes) addButton(row, "secondary not-found", STRINGS.notFound, notFound);
+    if (voice) addButton(row, "secondary read-aloud", STRINGS.readAloud, () => speak(text));
     message.append(row);
   }
   message.scrollIntoView({ block: "end" });
@@ -235,7 +244,7 @@ async function getPageMap(tab) {
       texts.push(map.text);
       marks.push(...map.marks);
     });
-    return { pageId: top.pageId, text: texts.join("\n\n"), marks, viewport: top.viewport };
+    return { text: texts.join("\n\n"), marks, viewport: top.viewport };
   } catch {
     return null;
   }
@@ -244,7 +253,7 @@ async function getPageMap(tab) {
 // "f2.e7" -> frame 2's "e7"; "e7" -> the page itself.
 function locate(elementId) {
   const match = /^(f\d+\.)(e\d+)$/.exec(elementId);
-  if (!match) return { frameId: 0, id: elementId };
+  if (!match) return { frameId: frameIds.get(""), id: elementId };
   return { frameId: frameIds.get(match[1]), id: match[2] };
 }
 
@@ -261,7 +270,7 @@ async function getMarks(tab) {
 }
 
 function clearHighlights(tab) {
-  stepTabId = null;
+  boxesDrawn = false;
   return chrome.tabs.sendMessage(tab.id, { type: "clearHighlights" }).catch(() => {});
 }
 
@@ -312,6 +321,11 @@ async function captureScreenshot(tab, markData) {
 // Returns { text, image?, error? } for claude.js / gemini.js to wrap.
 // `onFollow(goal)` records a follow_task call for the turn being answered.
 async function runTool(tab, name, input, onFollow) {
+  // The page could not be read (new tab, Chrome's own pages, PDF): Chrome
+  // lets no extension draw on or capture those.
+  if (!frameIds.size && ["highlight_element", "request_screenshot"].includes(name)) {
+    return { error: true, text: "This page cannot be read, so nothing on it can be highlighted or captured. Tell her in words." };
+  }
   try {
     switch (name) {
       case "highlight_element": {
@@ -325,7 +339,7 @@ async function runTool(tab, name, input, onFollow) {
         const response = await chrome.tabs.sendMessage(tab.id, { type: "highlight", id, label: input.label }, { frameId });
         turnLog?.highlights.push({ id: input.element_id, label: input.label, ok: Boolean(response?.ok), coveredBy: response?.coveredBy });
         if (!response?.ok) return { error: true, text: response?.error ?? "The page did not respond." };
-        stepTabId = tab.id;
+        boxesDrawn = true;
         turnLog && (turnLog.ms.firstHighlight ??= Math.round(performance.now() - turnLog.start));
         if (response.coveredBy) {
           return {
@@ -341,7 +355,7 @@ async function runTool(tab, name, input, onFollow) {
         const goal = typeof input?.goal === "string" ? input.goal.trim() : "";
         if (!goal) return { error: true, text: "goal must be a sentence describing her task." };
         onFollow(goal);
-        return { text: "Following her task. When she does a highlighted step, you get an <event> with the new page." };
+        return { text: "Task remembered. Her next question comes with it as <earlier_task>." };
       }
       case "clear_highlights":
         await clearHighlights(tab);
@@ -371,19 +385,8 @@ async function ask(rawQuestion) {
   questionBox.value = "";
   // A new question replaces whatever was being answered or waiting.
   await interrupt();
-  queuedStep = null;
   const earlier = task ? `\n<earlier_task>\n${task}\n</earlier_task>` : "";
   await converse(question, `<question>\n${question}\n</question>${earlier}`, { newQuestion: true });
-}
-
-// She did the highlighted step of a followed task: show the next one without her asking.
-// "Tehtud." appears right away; the page is read once it is ready.
-async function continueAfterStep({ description, pageId }) {
-  await converse(
-    STRINGS.done,
-    `<event>\nShe just ${description}.\nHer task: ${task}\nThe screenshot and page list show the page now. If her task is not finished yet, give her the next step. If it is finished, tell her.\n</event>`,
-    { newQuestion: false, beforeReading: (signal) => waitForPageLoad(pageId, signal) }
-  );
 }
 
 // She pressed „Ma ei leia seda“: look again, with the stronger model.
@@ -393,54 +396,9 @@ async function notFound() {
   await converse(
     STRINGS.notFound + ".",
     `<event>\nShe pressed "I can't find it": she cannot see or find what you highlighted.\n${task ? `Her task: ${task}\n` : ""}Look at the screenshot and page list again. Check that you picked the right thing and that nothing covers it. Then describe it differently (colour, place, the words on it) and highlight it again, or pick a better one.\n</event>`,
-    { newQuestion: false, who: "her", escalate: true }
+    { newQuestion: false, escalate: true }
   );
 }
-
-// Waits until the page she is looking at (a link may have opened a new tab)
-// can be read: a new page as soon as its text is there, not when every image
-// and ad has loaded; the same page once it stops changing.
-async function waitForPageLoad(oldPageId, signal) {
-  await sleep(150);
-  for (let waited = 150; waited < 10000; waited += 150) {
-    signal.throwIfAborted();
-    const tab = await getActiveTab();
-    if (!tab) return;
-    const ping = await chrome.tabs.sendMessage(tab.id, { type: "ping" }, { frameId: 0 }).catch(() => null);
-    if (ping?.pageId && ping.pageId !== oldPageId) break;
-    // The old page, and no navigation on the way: she stayed on this page.
-    if (ping?.pageId === oldPageId && !ping.leaving && tab.status !== "loading") break;
-    if (!ping) {
-      // No helper in the page yet. If the new page is already parsed, read
-      // it now (reading injects the helper); special pages cannot be read.
-      const state = await chrome.scripting
-        .executeScript({ target: { tabId: tab.id }, func: () => document.readyState })
-        .then(([frame]) => frame?.result, () => null);
-      if (state === "interactive" || state === "complete") break;
-      if (state === null && tab.status === "complete") break;
-    }
-    await sleep(150);
-  }
-  const tab = await getActiveTab();
-  if (tab) await chrome.tabs.sendMessage(tab.id, { type: "waitForQuiet" }, { frameId: 0 }).catch(() => {});
-}
-
-// While an answer is still coming, it is not known yet whether it follows a
-// task: keep the step and decide when the answer is done.
-function stepDone(description, pageId) {
-  stepTabId = null;
-  if (busy) {
-    queuedStep = { description, pageId };
-    return;
-  }
-  if (task) continueAfterStep({ description, pageId });
-}
-
-// She clicked a highlight, filled in the highlighted boxes, or sent their
-// form. Nothing else she does on the page is watched.
-chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message?.type === "highlightDone" && sender.tab?.windowId === windowId) stepDone(message.description, message.pageId);
-});
 
 // The turn being answered, for timing and the optional log.
 let turnLog = null;
@@ -451,7 +409,6 @@ let turnFinished = Promise.resolve();
 // Stops the answer in progress, if any, and waits until it has stopped.
 async function interrupt() {
   if (!busy) return;
-  queuedStep = null;
   speechSynthesis.cancel();
   turnAbort?.abort();
   await turnFinished;
@@ -489,8 +446,7 @@ function record({ tab, kind, prompt, text, screenshot, answer, outcome }) {
     .catch(console.error);
 }
 
-// `beforeReading` runs after her message is shown and before the page is read.
-async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "her" : "step", escalate = false, beforeReading }) {
+async function converse(shownText, prompt, { newQuestion, escalate = false }) {
   if (busy) return;
   if (!assistant) {
     $("setup").hidden = false;
@@ -504,7 +460,7 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
   turnFinished = new Promise((resolve) => (finishTurn = resolve));
   let tab = null;
   log.querySelector(".examples")?.remove();
-  addMessage(who, shownText);
+  addMessage("her", shownText);
   const reply = addMessage("helper waiting", STRINGS.waiting);
   const replyText = reply.querySelector(".text");
   announce(STRINGS.waiting);
@@ -512,7 +468,6 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
   turnLog = { start: performance.now(), ms: {}, highlights: [] };
 
   try {
-    await beforeReading?.(signal);
     turnLog.ms.pageReady = Math.round(performance.now() - turnLog.start);
     tab = await getActiveTab();
     if (!tab) {
@@ -526,7 +481,8 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
 
     await clearHighlights(tab);
     const page = await getPageMap(tab);
-    const pageText = page?.text ?? `Title: ${tab.title ?? "(unknown)"}\n${CANNOT_READ_PAGE}`;
+    if (!page) frameIds = new Map();
+    const pageText = page?.text ?? (showsNoWebsite(tab) ? NO_WEBSITE : `Title: ${tab.title ?? "(unknown)"}\n${CANNOT_READ_PAGE}`);
 
     let screenshot = null;
     if (page) {
@@ -588,12 +544,12 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
           `first text ${firstText} ms, first box ${firstHighlight} ms, done ${total} ms`
       );
       if (signal.aborted) outcome = "stopped";
-      record({ tab, kind: newQuestion ? "question" : escalate ? "notFound" : "event", prompt, text, screenshot, answer, outcome });
+      record({ tab, kind: escalate ? "notFound" : "question", prompt, text, screenshot, answer, outcome });
     }
 
-    const showedBoxes = stepTabId !== null;
-    // An answer follows her task only if it called follow_task. A failed
-    // turn keeps the task, so asking again can pick it up.
+    const showedBoxes = boxesDrawn;
+    // An answer keeps her task only if it called follow_task. A failed turn
+    // keeps it too, so asking again can pick it up.
     if (outcome === "done") task = followGoal ?? "";
     if (outcome === "refusal") {
       task = "";
@@ -618,11 +574,6 @@ async function converse(shownText, prompt, { newQuestion, who = newQuestion ? "h
     turnAbort = null;
     setBusy(false);
     finishTurn();
-    if (queuedStep) {
-      const { description, pageId } = queuedStep;
-      queuedStep = null;
-      stepDone(description, pageId);
-    }
   }
 }
 
@@ -682,7 +633,6 @@ questionBox.addEventListener("keydown", (event) => {
 $("start-over").addEventListener("click", async () => {
   await interrupt();
   speechSynthesis.cancel();
-  queuedStep = null;
   task = "";
   resetConversation();
   showWelcome();
@@ -696,6 +646,7 @@ $("open-settings").addEventListener("click", () => chrome.runtime.openOptionsPag
 stopButton.addEventListener("click", async () => {
   await interrupt();
   task = "";
+  log.querySelector(".next-step")?.remove();
 });
 micButton.addEventListener("click", () => (recognition ? recognition.stop() : startListening()));
 

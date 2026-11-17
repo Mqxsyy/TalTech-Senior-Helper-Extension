@@ -82,16 +82,6 @@ main {
   border: 3px solid var(--error);
 }
 
-/* "Tehtud." after she did a step: a quiet line, not a bubble. */
-.message.step {
-  margin: -4px 0 10px auto;
-  padding: 0 4px;
-  width: fit-content;
-  background: none;
-  font-size: 0.8em;
-  color: var(--muted);
-}
-
 .message.waiting .text {
   color: var(--muted);
 }
@@ -106,6 +96,11 @@ main {
 
 .message-actions button {
   font-size: 0.8em;
+}
+
+/* The next step of her task: the main thing to press, full size. */
+.message-actions button.next-step {
+  font-size: 1em;
 }
 
 .examples {
